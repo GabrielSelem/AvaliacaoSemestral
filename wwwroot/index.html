@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestão de Salas de Reunião</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: auto; }
+        form { border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
+        input, button { margin: 5px 0; padding: 8px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.22.5/babel.min.js"></script>
+</head>
+<body>
+<div class="container" id="root"></div>
+
+<script type="text/babel">
+const API_URL = "http://localhost:5020";
+
+function Login({ onLogin }) {
+    const [email, setEmail] = React.useState("");
+    const [senha, setSenha] = React.useState("");
+    const [erro, setErro] = React.useState("");
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setErro("");
+        try {
+            const response = await fetch(`${API_URL}/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, senha })
+            });
+
+            if (!response.ok) throw new Error("Login inválido");
+
+            const data = await response.json();
+            localStorage.setItem("token", data.token);
+            onLogin(data.token);
+        } catch (err) {
+            setErro("Falha no login. Verifique suas credenciais.");
+        }
+    };
+
+    return (
+        <div>
+            <h2>Login</h2>
+            <form onSubmit={handleSubmit}>
+                <div>Email: <input type="email" value={email} onChange={e => setEmail(e.target.value)} required /></div>
+                <div>Senha: <input type="password" value={senha} onChange={e => setSenha(e.target.value)} required /></div>
+                <button type="submit">Entrar</button>
+                {erro && <div className="error">{erro}</div>}
+            </form>
+        </div>
+    );
+}
+
+function CrudSalas({ token }) {
+    const [salas, setSalas] = React.useState([]);
+    const [nome, setNome] = React.useState("");
+    const [capacidade, setCapacidade] = React.useState("");
+    const [possuiProjetor, setPossuiProjetor] = React.useState(false);
+    const [editandoId, setEditandoId] = React.useState(null);
+    const [mensagem, setMensagem] = React.useState("");
+
+    React.useEffect(() => {
+        carregarSalas();
+    }, []);
+
+    async function carregarSalas() {
+        try {
+            const response = await fetch(`${API_URL}/salas`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const data = await response.json();
+            setSalas(data);
+        } catch (err) {
+            setMensagem("Erro ao carregar salas");
+        }
+    }
+
+    async function salvarSala(e) {
+        e.preventDefault();
+        const sala = { nome, capacidade: parseInt(capacidade), possuiProjetor };
+
+        try {
+            if (editandoId === null) {
+                await fetch(`${API_URL}/salas`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`
+                    },
+                    body: JSON.stringify(sala)
+                });
+            } else {
+                await fetch(`${API_URL}/salas/${editandoId}`, {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`
+                    },
+                    body: JSON.stringify(sala)
+                });
+            }
+            setMensagem("Operação realizada com sucesso!");
+            limparForm();
+            carregarSalas();
+        } catch (err) {
+            setMensagem("Erro ao salvar sala");
+        }
+    }
+
+    async function excluirSala(id) {
+        if (!confirm("Tem certeza?")) return;
+        try {
+            await fetch(`${API_URL}/salas/${id}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setMensagem("Sala excluída!");
+            carregarSalas();
+        } catch (err) {
+            setMensagem("Erro ao excluir");
+        }
+    }
+
+    function editarSala(sala) {
+        setEditandoId(sala.id);
+        setNome(sala.nome);
+        setCapacidade(sala.capacidade);
+        setPossuiProjetor(sala.possuiProjetor);
+    }
+
+    function limparForm() {
+        setEditandoId(null);
+        setNome("");
+        setCapacidade("");
+        setPossuiProjetor(false);
+    }
+
+    return (
+        <div>
+            <h2>Gerenciar Salas de Reunião</h2>
+            {mensagem && <div className="success">{mensagem}</div>}
+            <form onSubmit={salvarSala}>
+                <div>Nome: <input value={nome} onChange={e => setNome(e.target.value)} required /></div>
+                <div>Capacidade: <input type="number" min="1" value={capacidade} onChange={e => setCapacidade(e.target.value)} required /></div>
+                <div>
+                    <label>Possui Projetor:</label>
+                    <input type="checkbox" checked={possuiProjetor} onChange={e => setPossuiProjetor(e.target.checked)} />
+                </div>
+                <button type="submit">{editandoId ? "Atualizar" : "Adicionar"}</button>
+                <button type="button" onClick={limparForm}>Cancelar</button>
+            </form>
+
+            <table>
+                <thead>
+                    <tr><th>ID</th><th>Nome</th><th>Capacidade</th><th>Projetor</th><th>Ações</th></tr>
+                </thead>
+                <tbody>
+                    {salas.map(sala => (
+                        <tr key={sala.id}>
+                            <td>{sala.id}</td>
+                            <td>{sala.nome}</td>
+                            <td>{sala.capacidade}</td>
+                            <td>{sala.possuiProjetor ? "Sim" : "Não"}</td>
+                            <td>
+                                <button onClick={() => editarSala(sala)}>Editar</button>
+                                <button onClick={() => excluirSala(sala.id)}>Excluir</button>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+function App() {
+    const [token, setToken] = React.useState(localStorage.getItem("token"));
+
+    const handleLogin = (novoToken) => {
+        localStorage.setItem("token", novoToken);
+        setToken(novoToken);
+    };
+
+    const handleLogout = () => {
+        localStorage.removeItem("token");
+        setToken(null);
+    };
+
+    return (
+        <div>
+            {token ? (
+                <div>
+                    <button onClick={handleLogout}>Sair</button>
+                    <CrudSalas token={token} />
+                </div>
+            ) : (
+                <Login onLogin={handleLogin} />
+            )}
+        </div>
+    );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
+</body>
+</html>
